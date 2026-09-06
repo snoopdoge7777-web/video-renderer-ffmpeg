@@ -31,14 +31,18 @@ def render_video():
                     img_file.write(r.content)
                 local_images.append(img_path)
                 
+        if not local_images:
+            return jsonify({"status": "error", "message": "No se pudo descargar ninguna imagen válida"}), 400
+                
         output_video = os.path.join(work_dir, f"{video_id}.mp4")
         
-        # 3. Comando FFmpeg simplificado para evitar errores de sintaxis en Linux
+        # 3. Comando FFmpeg con filtro de escala para asegurar dimensiones pares (evita errores de libx264)
         ffmpeg_cmd = [
             "ffmpeg", "-y",
             "-framerate", "1/3",
             "-i", os.path.join(work_dir, "img_%03d.png"),
             "-c:v", "libx264",
+            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
             "-pix_fmt", "yuv420p",
             output_video
         ]

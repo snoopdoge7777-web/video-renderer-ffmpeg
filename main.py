@@ -17,7 +17,8 @@ def render_video():
         print("DATOS RECIBIDOS:", data)
         
         video_id = data.get('video_id', 'video_default')
-        srt_content = data.get('srt', '')
+        # CORREGIDO: ahora lee 'srt_content' que es lo que manda n8n
+        srt_content = data.get('srt_content', data.get('srt', ''))
         image_urls_raw = data.get('image_urls', [])
         
         # --- BLINDAJE PARA IMAGE_URLS ---
@@ -26,10 +27,8 @@ def render_video():
             image_urls = image_urls_raw
         elif isinstance(image_urls_raw, str):
             try:
-                # Intentar parsear por si n8n lo mandó como string de JSON
                 image_urls = json.loads(image_urls_raw)
             except:
-                # Si viene como texto plano separado por comas o una sola URL
                 if "," in image_urls_raw:
                     image_urls = [u.strip() for u in image_urls_raw.split(",")]
                 else:

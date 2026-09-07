@@ -1,6 +1,7 @@
 import os
 import subprocess
 import base64
+import json
 import requests
 from flask import Flask, request, jsonify, send_file
 
@@ -13,31 +14,43 @@ def render_video():
         os.makedirs(work_dir, exist_ok=True)
         
         data = request.get_json(silent=True) or {}
-        print("DATOS RECIBIDOS:", data)  # Esto saldrá en los logs de Render
+        print("DATOS RECIBIDOS:", data)
         
         video_id = data.get('video_id', 'video_default')
         srt_content = data.get('srt', '')
-        image_urls = data.get('image_urls', [])
+        image_urls_raw = data.get('image_urls', [])
         
-        # Si n8n manda una sola URL como texto plano, convertirla en lista
-        if isinstance(image_urls, str):
-            image_urls = [image_urls]
-            
+        # --- BLINDAJE PARA IMAGE_URLS ---
+        image_urls = []
+        if isinstance(image_urls_raw, list):
+            image_urls = image_urls_raw
+        elif isinstance(image_urls_raw, str):
+            try:
+                # Intentar parsear por si n8n lo mandó como string de JSON
+                image_urls = json.loads(image_urls_raw)
+            except:
+                # Si viene como texto plano separado por comas o una sola URL
+                if "," in image_urls_raw:
+                    image_urls = [u.strip() for u in image_urls_raw.split(",")]
+                else:
+                    image_urls = [image_urls_raw]
+        
         local_images = []
         
         for valid_idx, img_item in enumerate(image_urls):
-            if not img_item:
+            if not img_item or not isinstance(img_item, str):
                 continue
+            
             img_filename = f"img_{valid_idx:03d}.png"
             img_path = os.path.join(work_dir, img_filename)
             
-            if isinstance(img_item, str) and img_item.startswith('data:image'):
+            if img_item.startswith('data:image'):
                 header, encoded = img_item.split(",", 1)
                 decoded_bytes = base64.b64decode(encoded)
                 with open(img_path, "wb") as fh:
                     fh.write(decoded_bytes)
                 local_images.append(img_path)
-            else:
+            elif img_item.startswith('http'):
                 r = requests.get(img_item)
                 if r.status_code == 200 and b"<html" not in r.content.lower():
                     with open(img_path, "wb") as fh:
@@ -51,7 +64,7 @@ def render_video():
         if not local_images:
             return jsonify({
                 "status": "error", 
-                "message": f"No se procesaron imágenes. Recibido en image_urls: {image_urls}"
+                "message": f"No se procesaron imágenes válidas. Se recibió: {image_urls_raw}"
             }), 400
                 
         output_video = os.path.join(work_dir, f"{video_id}.mp4")
@@ -76,16 +89,3 @@ def render_video():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
-```[cite: 1]
-
----
-
-### 2. Configura el JSON en n8n sin comillas en la variable de imágenes
-En tu nodo **HTTP Request**, asegúrate de que el bloque JSON esté escrito exactamente así (sin comillas alrededor de la expresión de las imágenes para que se inyecte como arreglo u objeto válido):
-
-```json
-{
-  "video_id": "={{ $json.id }}",
-  "srt": "={{ $json.srt }}",
-  "image_urls": ={{ $json.image_urls }}
-}

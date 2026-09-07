@@ -16,42 +16,50 @@ def render_video():
         work_dir = f"/tmp/{video_id}"
         os.makedirs(work_dir, exist_ok=True)
         
-        # 1. Guardar subtítulos si existen
+        # 1. Guardar subtítulos
         srt_path = os.path.join(work_dir, "subtitles.srt")
         with open(srt_path, "w", encoding="utf-8") as f:
             f.write(srt_content)
             
-        # 2. Descargar las imágenes ordenadas con manejo de confirmación para Google Drive
+        # 2. Descarga directa forzada por ID de Google Drive
         local_images = []
         session = requests.Session()
         
         for idx, img_url in enumerate(image_urls):
-            img_path = os.path.join(work_dir, f"img_{idx:03d}.png")
-            r = session.get(img_url, allow_redirects=True)
+            img_filename = f"img_{idx:03d}.png"
+            img_path = os.path.join(work_dir, img_filename)
             
-            if r.status_code == 200:
-                # Si Google Drive devuelve HTML, intentar agregar el parámetro confirm=1
-                if b"<html" in r.content.lower():
-                    if "uc?" in img_url and "confirm=" not in img_url:
-                        separator = "&" if "?" in img_url else "?"
-                        confirmed_url = f"{img_url}{separator}confirm=1"
-                        r = session.get(confirmed_url, allow_redirects=True)
-                
-                # Verificar de nuevo si sigue siendo HTML
-                if b"<html" in r.content.lower():
-                    print(f"Error: La URL {img_url} sigue bloqueada por Google Drive.")
-                    continue
-                    
+            target_url = img_url
+            if "drive.google.com" in img_url and "id=" in img_url:
+                try:
+                    file_id = img_url.split("id=")[1].split("&")[0]
+                    target_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+                except Exception:
+                    pass
+            
+            r = session.get(target_url, allow_redirects=True)
+            
+            if r.status_code == 200 and b"<html" in r.content.lower() and "id=" in img_url:
+                try:
+                    file_id = img_url.split("id=")[1].split("&")[0]
+                    target_url = f"https://drive.google.com/uc?export=download&confirm=1&id={file_id}"
+                    r = session.get(target_url, allow_redirects=True)
+                except Exception:
+                    pass
+
+            if r.status_code == 200 and b"<html" not in r.content.lower():
                 with open(img_path, 'wb') as img_file:
                     img_file.write(r.content)
                 local_images.append(img_path)
+            else:
+                print(f"Fallo al descargar la imagen {idx} desde {target_url}")
                 
         if not local_images:
-            return jsonify({"status": "error", "message": "No se pudo descargar ninguna imagen válida o Google Drive bloqueó la descarga"}), 400
+            return jsonify({"status": "error", "message": "No se pudo descargar ninguna imagen válida de Drive"}), 400
                 
         output_video = os.path.join(work_dir, f"{video_id}.mp4")
         
-        # 3. Comando FFmpeg con filtro de escala para asegurar dimensiones pares
+        # 3. Comando FFmpeg
         ffmpeg_cmd = [
             "ffmpeg", "-y",
             "-framerate", "1/3",

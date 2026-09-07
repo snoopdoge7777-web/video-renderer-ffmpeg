@@ -40,14 +40,12 @@ def render_video():
                 img_filename = f"img_{idx:03d}.png"
                 img_path = os.path.join(work_dir, img_filename)
                 
-                # Si viene en formato Base64
                 if isinstance(img_item, str) and img_item.startswith('data:image'):
                     header, encoded = img_item.split(",", 1)
                     with open(img_path, "wb") as fh:
                         fh.write(base64.b64decode(encoded))
                     local_images.append(img_path)
                 else:
-                    # Intento de respaldo por URL clásica
                     import requests
                     r = requests.get(img_item)
                     if r.status_code == 200 and b"<html" not in r.content.lower():
@@ -65,10 +63,11 @@ def render_video():
                 
         output_video = os.path.join(work_dir, f"{video_id}.mp4")
         
-        # 2. Comando FFmpeg
+        # 2. Comando FFmpeg con -start_number para evitar errores de secuencia
         ffmpeg_cmd = [
             "ffmpeg", "-y",
             "-framerate", "1/3",
+            "-start_number", "0",
             "-i", os.path.join(work_dir, "img_%03d.png"),
             "-c:v", "libx264",
             "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",

@@ -39,7 +39,8 @@ def render_video():
             if not img_item or not isinstance(img_item, str):
                 continue
             
-            img_filename = f"img_{valid_idx:03d}.png"
+            # CORRECCIÓN: Guardar como .jpg porque el formato real descargado es JPEG
+            img_filename = f"img_{valid_idx:03d}.jpg"
             img_path = os.path.join(work_dir, img_filename)
             
             if img_item.startswith('data:image'):
@@ -71,7 +72,8 @@ def render_video():
             "ffmpeg", "-y",
             "-framerate", "1/3",
             "-start_number", "0",
-            "-i", os.path.join(work_dir, "img_%03d.png"),
+            # CORRECCIÓN: Leer los archivos como .jpg
+            "-i", os.path.join(work_dir, "img_%03d.jpg"),
             "-c:v", "libx264",
             "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
             "-pix_fmt", "yuv420p",

@@ -1,7 +1,7 @@
 import os
 import subprocess
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 
 app = Flask(__name__)
 
@@ -21,18 +21,16 @@ def render_video():
         with open(srt_path, "w", encoding="utf-8") as f:
             f.write(srt_content)
             
-        # 2. Descarga segura y renombrado secuencial estricto para FFmpeg
+        # 2. Descarga segura protegiendo contra valores nulos (NoneType)
         local_images = []
         session = requests.Session()
         
-        valid_idx = 0
         for idx, img_url in enumerate(image_urls):
             # Si la URL viene vacía o es None, la ignoramos de forma segura
             if not img_url or not isinstance(img_url, str):
                 continue
                 
-            # Forzamos nombres secuenciales limpios: img_000.png, img_001.png, img_002.png...
-            img_filename = f"img_{valid_idx:03d}.png"
+            img_filename = f"img_{idx:03d}.png"
             img_path = os.path.join(work_dir, img_filename)
             
             target_url = img_url
@@ -57,7 +55,6 @@ def render_video():
                 with open(img_path, 'wb') as img_file:
                     img_file.write(r.content)
                 local_images.append(img_path)
-                valid_idx += 1  # Solo incrementamos si la imagen se guardó con éxito
             else:
                 print(f"Fallo al descargar la imagen {idx} desde {target_url}")
                 
@@ -66,11 +63,10 @@ def render_video():
                 
         output_video = os.path.join(work_dir, f"{video_id}.mp4")
         
-        # 3. Comando FFmpeg robusto
+        # 3. Comando FFmpeg
         ffmpeg_cmd = [
             "ffmpeg", "-y",
             "-framerate", "1/3",
-            "-start_number", "0",
             "-i", os.path.join(work_dir, "img_%03d.png"),
             "-c:v", "libx264",
             "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
@@ -80,11 +76,13 @@ def render_video():
         
         subprocess.run(ffmpeg_cmd, check=True)
         
-        return jsonify({
-            "status": "success",
-            "message": "Video renderizado con éxito",
-            "video_path": output_video
-        })
+        # 4. Enviar el archivo binario del video directamente a n8n
+        return send_file(
+            output_video, 
+            mimetype='video/mp4', 
+            as_attachment=True, 
+            download_name=f"{video_id}.mp4"
+        )
         
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500

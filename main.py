@@ -85,17 +85,3 @@ def render_video():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
-```[cite: 1]
-
----
-
-### 2. Configura el nodo HTTP Request en n8n:
-1. Cambia **Body Content Type** a **`JSON`**.
-2. Cambia **Specify Body** a **`Using JSON`** (en lugar de campos separados).
-3. Pega este bloque exacto de JSON dentro del cuadro:
-   ```json
-   {
-     "video_id": "={{ $json.id }}",
-     "srt": "={{ $json.srt }}",
-     "image_urls": "={{ $json.image_urls }}"
-   }

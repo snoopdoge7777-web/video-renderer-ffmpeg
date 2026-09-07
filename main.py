@@ -21,11 +21,17 @@ def render_video():
             srt_content = request.form.get('srt', request.form.get('srt_content', ''))
             
             files = request.files.getlist('images')
-            for idx, file in enumerate(files):
-                img_filename = f"img_{idx:03d}.png"
-                img_path = os.path.join(work_dir, img_filename)
-                file.save(img_path)
-                local_images.append(img_path)
+            valid_idx = 0
+            for file in files:
+                # Verificamos que el archivo tenga contenido binario real
+                file_bytes = file.read()
+                if len(file_bytes) > 100:  # Validar que no esté vacío
+                    img_filename = f"img_{valid_idx:03d}.png"
+                    img_path = os.path.join(work_dir, img_filename)
+                    with open(img_path, "wb") as f:
+                        f.write(file_bytes)
+                    local_images.append(img_path)
+                    valid_idx += 1
 
         # CASO B: Recibe JSON (con URLs o Base64)
         elif request.is_json:
@@ -34,10 +40,11 @@ def render_video():
             srt_content = data.get('srt', data.get('srt_content', ''))
             image_urls = data.get('image_urls', [])
             
-            for idx, img_item in enumerate(image_urls):
+            valid_idx = 0
+            for img_item in image_urls:
                 if not img_item:
                     continue
-                img_filename = f"img_{idx:03d}.png"
+                img_filename = f"img_{valid_idx:03d}.png"
                 img_path = os.path.join(work_dir, img_filename)
                 
                 if isinstance(img_item, str) and img_item.startswith('data:image'):
@@ -45,6 +52,7 @@ def render_video():
                     with open(img_path, "wb") as fh:
                         fh.write(base64.b64decode(encoded))
                     local_images.append(img_path)
+                    valid_idx += 1
                 else:
                     import requests
                     r = requests.get(img_item)
@@ -52,6 +60,7 @@ def render_video():
                         with open(img_path, "wb") as fh:
                             fh.write(r.content)
                         local_images.append(img_path)
+                        valid_idx += 1
 
         # 1. Guardar subtítulos
         srt_path = os.path.join(work_dir, "subtitles.srt")
@@ -63,7 +72,7 @@ def render_video():
                 
         output_video = os.path.join(work_dir, f"{video_id}.mp4")
         
-        # 2. Comando FFmpeg con captura detallada de errores de consola
+        # 2. Comando FFmpeg optimizado
         ffmpeg_cmd = [
             "ffmpeg", "-y",
             "-framerate", "1/3",

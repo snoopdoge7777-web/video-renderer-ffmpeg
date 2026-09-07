@@ -21,11 +21,15 @@ def render_video():
         with open(srt_path, "w", encoding="utf-8") as f:
             f.write(srt_content)
             
-        # 2. Descarga directa forzada por ID de Google Drive
+        # 2. Descarga segura protegiendo contra valores nulos (NoneType)
         local_images = []
         session = requests.Session()
         
         for idx, img_url in enumerate(image_urls):
+            # Si la URL viene vacía o es None, la ignoramos de forma segura
+            if not img_url or not isinstance(img_url, str):
+                continue
+                
             img_filename = f"img_{idx:03d}.png"
             img_path = os.path.join(work_dir, img_filename)
             
@@ -55,7 +59,7 @@ def render_video():
                 print(f"Fallo al descargar la imagen {idx} desde {target_url}")
                 
         if not local_images:
-            return jsonify({"status": "error", "message": "No se pudo descargar ninguna imagen válida de Drive"}), 400
+            return jsonify({"status": "error", "message": "No se pudo descargar ninguna imagen válida"}), 400
                 
         output_video = os.path.join(work_dir, f"{video_id}.mp4")
         

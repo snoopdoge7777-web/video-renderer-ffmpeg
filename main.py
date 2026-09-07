@@ -1,6 +1,6 @@
 import os
 import subprocess
-import requests
+import base64
 from flask import Flask, request, jsonify, send_file
 
 app = Flask(__name__)
@@ -8,62 +8,64 @@ app = Flask(__name__)
 @app.route('/render', methods=['POST'])
 def render_video():
     try:
-        data = request.json
-        video_id = data.get('video_id', f"video_{os.urandom(4).hex()}")
-        srt_content = data.get('srt', '')
-        image_urls = data.get('image_urls', [])
-        
-        work_dir = f"/tmp/{video_id}"
+        work_dir = f"/tmp/{os.urandom(4).hex()}"
         os.makedirs(work_dir, exist_ok=True)
         
+        video_id = "video_default"
+        srt_content = ""
+        local_images = []
+
+        # CASO A: Recibe archivos binarios directamente (Multipart/form-data desde n8n)
+        if request.files:
+            video_id = request.form.get('video_id', f"video_{os.urandom(4).hex()}")
+            srt_content = request.form.get('srt', request.form.get('srt_content', ''))
+            
+            files = request.files.getlist('images')
+            for idx, file in enumerate(files):
+                img_filename = f"img_{idx:03d}.png"
+                img_path = os.path.join(work_dir, img_filename)
+                file.save(img_path)
+                local_images.append(img_path)
+
+        # CASO B: Recibe JSON (con URLs o Base64)
+        elif request.is_json:
+            data = request.json
+            video_id = data.get('video_id', f"video_{os.urandom(4).hex()}")
+            srt_content = data.get('srt', data.get('srt_content', ''))
+            image_urls = data.get('image_urls', [])
+            
+            for idx, img_item in enumerate(image_urls):
+                if not img_item:
+                    continue
+                img_filename = f"img_{idx:03d}.png"
+                img_path = os.path.join(work_dir, img_filename)
+                
+                # Si viene en formato Base64
+                if isinstance(img_item, str) and img_item.startswith('data:image'):
+                    header, encoded = img_item.split(",", 1)
+                    with open(img_path, "wb") as fh:
+                        fh.write(base64.b64decode(encoded))
+                    local_images.append(img_path)
+                else:
+                    # Intento de respaldo por URL clásica
+                    import requests
+                    r = requests.get(img_item)
+                    if r.status_code == 200 and b"<html" not in r.content.lower():
+                        with open(img_path, "wb") as fh:
+                            fh.write(r.content)
+                        local_images.append(img_path)
+
         # 1. Guardar subtítulos
         srt_path = os.path.join(work_dir, "subtitles.srt")
         with open(srt_path, "w", encoding="utf-8") as f:
             f.write(srt_content)
             
-        # 2. Descarga segura protegiendo contra valores nulos (NoneType)
-        local_images = []
-        session = requests.Session()
-        
-        for idx, img_url in enumerate(image_urls):
-            # Si la URL viene vacía o es None, la ignoramos de forma segura
-            if not img_url or not isinstance(img_url, str):
-                continue
-                
-            img_filename = f"img_{idx:03d}.png"
-            img_path = os.path.join(work_dir, img_filename)
-            
-            target_url = img_url
-            if "drive.google.com" in img_url and "id=" in img_url:
-                try:
-                    file_id = img_url.split("id=")[1].split("&")[0]
-                    target_url = f"https://drive.google.com/uc?export=download&id={file_id}"
-                except Exception:
-                    pass
-            
-            r = session.get(target_url, allow_redirects=True)
-            
-            if r.status_code == 200 and b"<html" in r.content.lower() and "id=" in img_url:
-                try:
-                    file_id = img_url.split("id=")[1].split("&")[0]
-                    target_url = f"https://drive.google.com/uc?export=download&confirm=1&id={file_id}"
-                    r = session.get(target_url, allow_redirects=True)
-                except Exception:
-                    pass
-
-            if r.status_code == 200 and b"<html" not in r.content.lower():
-                with open(img_path, 'wb') as img_file:
-                    img_file.write(r.content)
-                local_images.append(img_path)
-            else:
-                print(f"Fallo al descargar la imagen {idx} desde {target_url}")
-                
         if not local_images:
-            return jsonify({"status": "error", "message": "No se pudo descargar ninguna imagen válida"}), 400
+            return jsonify({"status": "error", "message": "No se pudo procesar ninguna imagen válida"}), 400
                 
         output_video = os.path.join(work_dir, f"{video_id}.mp4")
         
-        # 3. Comando FFmpeg
+        # 2. Comando FFmpeg
         ffmpeg_cmd = [
             "ffmpeg", "-y",
             "-framerate", "1/3",
@@ -76,7 +78,7 @@ def render_video():
         
         subprocess.run(ffmpeg_cmd, check=True)
         
-        # 4. Enviar el archivo binario del video directamente a n8n
+        # 3. Enviar video resultante
         return send_file(
             output_video, 
             mimetype='video/mp4', 

@@ -63,7 +63,7 @@ def render_video():
                 
         output_video = os.path.join(work_dir, f"{video_id}.mp4")
         
-        # 2. Comando FFmpeg con -start_number para evitar errores de secuencia
+        # 2. Comando FFmpeg con captura detallada de errores de consola
         ffmpeg_cmd = [
             "ffmpeg", "-y",
             "-framerate", "1/3",
@@ -75,7 +75,19 @@ def render_video():
             output_video
         ]
         
-        subprocess.run(ffmpeg_cmd, check=True)
+        try:
+            subprocess.run(
+                ffmpeg_cmd, 
+                check=True, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE, 
+                text=True
+            )
+        except subprocess.CalledProcessError as e:
+            return jsonify({
+                "status": "error", 
+                "message": f"Error de FFmpeg: {e.stderr.strip()}"
+            }), 500
         
         # 3. Enviar video resultante
         return send_file(

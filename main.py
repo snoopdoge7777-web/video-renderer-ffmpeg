@@ -24,21 +24,14 @@ def render_video():
             valid_idx = 0
             for file in files:
                 file_bytes = file.read()
-                
-                # Validar que sea realmente una imagen (PNG comienza con \x89PNG o JPEG con \xff\xd8)
-                is_png = file_bytes.startswith(b'\x89PNG')
-                is_jpg = file_bytes.startswith(b'\xff\xd8')
-                
-                if (is_png or is_jpg) and len(file_bytes) > 100:
-                    ext = ".png" if is_png else ".jpg"
-                    img_filename = f"img_{valid_idx:03d}{ext}"
+                # Aceptamos cualquier archivo que tenga contenido binario real (> 10 bytes)
+                if len(file_bytes) > 10:
+                    img_filename = f"img_{valid_idx:03d}.png"
                     img_path = os.path.join(work_dir, img_filename)
                     with open(img_path, "wb") as f:
                         f.write(file_bytes)
                     local_images.append(img_path)
                     valid_idx += 1
-                else:
-                    print(f"Archivo ignorado por no ser una imagen válida (posible texto o SRT)")
 
         # CASO B: Recibe JSON (con URLs o Base64)
         elif request.is_json:
@@ -76,11 +69,11 @@ def render_video():
             f.write(srt_content)
             
         if not local_images:
-            return jsonify({"status": "error", "message": "No se pudo procesar ninguna imagen válida. Revisa que n8n esté enviando las imágenes en el campo binario correcto ('images')."}), 400
+            return jsonify({"status": "error", "message": "No se pudo procesar ninguna imagen válida."}), 400
                 
         output_video = os.path.join(work_dir, f"{video_id}.mp4")
         
-        # 2. Comando FFmpeg dinámico según la extensión de las imágenes
+        # 2. Comando FFmpeg
         ffmpeg_cmd = [
             "ffmpeg", "-y",
             "-framerate", "1/3",

@@ -9,10 +9,7 @@ app = Flask(__name__)
 def render_video():
     try:
         data = request.json
-        # Genera un ID único si n8n no lo envía para evitar conflictos en /tmp/
         video_id = data.get('video_id', f"video_{os.urandom(4).hex()}")
-        
-        # Corregido para que coincida exactamente con la clave 'srt' que configuramos en n8n
         srt_content = data.get('srt', '')
         image_urls = data.get('image_urls', [])
         
@@ -24,18 +21,26 @@ def render_video():
         with open(srt_path, "w", encoding="utf-8") as f:
             f.write(srt_content)
             
-        # 2. Descargar las imágenes ordenadas
+        # 2. Descargar las imágenes ordenadas con validación para Google Drive
         local_images = []
+        session = requests.Session()
+        
         for idx, img_url in enumerate(image_urls):
             img_path = os.path.join(work_dir, f"img_{idx:03d}.png")
-            r = requests.get(img_url)
+            r = session.get(img_url, allow_redirects=True)
+            
             if r.status_code == 200:
+                # Evita que se guarden páginas HTML de advertencia de Google Drive en vez de imágenes
+                if b"<html" in r.content.lower():
+                    print(f"Error: La URL {img_url} devolvió HTML en lugar de una imagen.")
+                    continue
+                    
                 with open(img_path, 'wb') as img_file:
                     img_file.write(r.content)
                 local_images.append(img_path)
                 
         if not local_images:
-            return jsonify({"status": "error", "message": "No se pudo descargar ninguna imagen válida"}), 400
+            return jsonify({"status": "error", "message": "No se pudo descargar ninguna imagen válida o Google Drive bloqueó la descarga"}), 400
                 
         output_video = os.path.join(work_dir, f"{video_id}.mp4")
         

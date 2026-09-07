@@ -21,7 +21,7 @@ def render_video():
         with open(srt_path, "w", encoding="utf-8") as f:
             f.write(srt_content)
             
-        # 2. Descargar las imágenes ordenadas con validación para Google Drive
+        # 2. Descargar las imágenes ordenadas con manejo de confirmación para Google Drive
         local_images = []
         session = requests.Session()
         
@@ -30,9 +30,16 @@ def render_video():
             r = session.get(img_url, allow_redirects=True)
             
             if r.status_code == 200:
-                # Evita que se guarden páginas HTML de advertencia de Google Drive en vez de imágenes
+                # Si Google Drive devuelve HTML, intentar agregar el parámetro confirm=1
                 if b"<html" in r.content.lower():
-                    print(f"Error: La URL {img_url} devolvió HTML en lugar de una imagen.")
+                    if "uc?" in img_url and "confirm=" not in img_url:
+                        separator = "&" if "?" in img_url else "?"
+                        confirmed_url = f"{img_url}{separator}confirm=1"
+                        r = session.get(confirmed_url, allow_redirects=True)
+                
+                # Verificar de nuevo si sigue siendo HTML
+                if b"<html" in r.content.lower():
+                    print(f"Error: La URL {img_url} sigue bloqueada por Google Drive.")
                     continue
                     
                 with open(img_path, 'wb') as img_file:
@@ -44,7 +51,7 @@ def render_video():
                 
         output_video = os.path.join(work_dir, f"{video_id}.mp4")
         
-        # 3. Comando FFmpeg con filtro de escala para asegurar dimensiones pares (evita errores de libx264)
+        # 3. Comando FFmpeg con filtro de escala para asegurar dimensiones pares
         ffmpeg_cmd = [
             "ffmpeg", "-y",
             "-framerate", "1/3",

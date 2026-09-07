@@ -20,18 +20,25 @@ def render_video():
             video_id = request.form.get('video_id', f"video_{os.urandom(4).hex()}")
             srt_content = request.form.get('srt', request.form.get('srt_content', ''))
             
-            files = request.files.getlist('images')
-            valid_idx = 0
-            for file in files:
-                file_bytes = file.read()
-                # Aceptamos cualquier archivo que tenga contenido binario real (> 10 bytes)
-                if len(file_bytes) > 10:
-                    img_filename = f"img_{valid_idx:03d}.png"
-                    img_path = os.path.join(work_dir, img_filename)
-                    with open(img_path, "wb") as f:
-                        f.write(file_bytes)
-                    local_images.append(img_path)
-                    valid_idx += 1
+            # Iterar sobre todas las keys de archivos que envíe n8n
+            for key in request.files:
+                files = request.files.getlist(key)
+                for file in files:
+                    file_bytes = file.read()
+                    
+                    # Verificar si los primeros bytes corresponden a texto o subtítulos (ej. empieza con números o '1')
+                    head_preview = file_bytes[:20].decode('utf-8', errors='ignore')
+                    if "00:" in head_preview or head_preview.startswith("1\n") or head_preview.startswith("1\r"):
+                        print(f"[ADVERTENCIA] Se ignoró un campo que parece texto/SRT en la key '{key}': {head_preview}")
+                        continue
+                        
+                    # Validar tamaño mínimo de una imagen real
+                    if len(file_bytes) > 100:
+                        img_filename = f"img_{len(local_images):03d}.png"
+                        img_path = os.path.join(work_dir, img_filename)
+                        with open(img_path, "wb") as f:
+                            f.write(file_bytes)
+                        local_images.append(img_path)
 
         # CASO B: Recibe JSON (con URLs o Base64)
         elif request.is_json:
@@ -40,8 +47,7 @@ def render_video():
             srt_content = data.get('srt', data.get('srt_content', ''))
             image_urls = data.get('image_urls', [])
             
-            valid_idx = 0
-            for img_item in image_urls:
+            for valid_idx, img_item in enumerate(image_urls):
                 if not img_item:
                     continue
                 img_filename = f"img_{valid_idx:03d}.png"
@@ -53,7 +59,6 @@ def render_video():
                     with open(img_path, "wb") as fh:
                         fh.write(decoded_bytes)
                     local_images.append(img_path)
-                    valid_idx += 1
                 else:
                     import requests
                     r = requests.get(img_item)
@@ -61,7 +66,6 @@ def render_video():
                         with open(img_path, "wb") as fh:
                             fh.write(r.content)
                         local_images.append(img_path)
-                        valid_idx += 1
 
         # 1. Guardar subtítulos
         srt_path = os.path.join(work_dir, "subtitles.srt")
@@ -69,7 +73,10 @@ def render_video():
             f.write(srt_content)
             
         if not local_images:
-            return jsonify({"status": "error", "message": "No se pudo procesar ninguna imagen válida."}), 400
+            return jsonify({
+                "status": "error", 
+                "message": "No se encontraron imágenes válidas. n8n está enviando texto (SRT) en lugar de binarios de imagen."
+            }), 400
                 
         output_video = os.path.join(work_dir, f"{video_id}.mp4")
         

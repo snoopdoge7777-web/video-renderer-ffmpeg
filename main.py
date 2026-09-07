@@ -17,6 +17,7 @@ def render_video():
         print("DATOS RECIBIDOS:", data)
         
         video_id = data.get('video_id', 'video_default')
+        # Lee correctamente el SRT desde n8n
         srt_content = data.get('srt_content', data.get('srt', ''))
         image_urls_raw = data.get('image_urls', [])
         
@@ -39,7 +40,7 @@ def render_video():
             if not img_item or not isinstance(img_item, str):
                 continue
             
-            # CORRECCIÓN: Guardar como .jpg porque el formato real descargado es JPEG
+            # Guardamos las imágenes como .jpg (formato real de Google Drive)
             img_filename = f"img_{valid_idx:03d}.jpg"
             img_path = os.path.join(work_dir, img_filename)
             
@@ -56,6 +57,7 @@ def render_video():
                         fh.write(r.content)
                     local_images.append(img_path)
 
+        # Guardar archivo de subtítulos SRT
         srt_path = os.path.join(work_dir, "subtitles.srt")
         with open(srt_path, "w", encoding="utf-8") as f:
             f.write(srt_content)
@@ -68,14 +70,15 @@ def render_video():
                 
         output_video = os.path.join(work_dir, f"{video_id}.mp4")
         
+        # --- COMANDO FFMPEG CON SUBTÍTULOS INTEGRADOS ---
         ffmpeg_cmd = [
             "ffmpeg", "-y",
             "-framerate", "1/3",
             "-start_number", "0",
-            # CORRECCIÓN: Leer los archivos como .jpg
             "-i", os.path.join(work_dir, "img_%03d.jpg"),
             "-c:v", "libx264",
-            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+            # Se agrega subtitles={srt_path} para quemar el texto en pantalla
+            "-vf", f"scale=trunc(iw/2)*2:trunc(ih/2)*2,subtitles={srt_path}",
             "-pix_fmt", "yuv420p",
             output_video
         ]

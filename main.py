@@ -9,8 +9,11 @@ app = Flask(__name__)
 def render_video():
     try:
         data = request.json
-        video_id = data.get('video_id', 'output_video')
-        srt_content = data.get('srt_content', '')
+        # Genera un ID único si n8n no lo envía para evitar conflictos en /tmp/
+        video_id = data.get('video_id', f"video_{os.urandom(4).hex()}")
+        
+        # Corregido para que coincida exactamente con la clave 'srt' que configuramos en n8n
+        srt_content = data.get('srt', '')
         image_urls = data.get('image_urls', [])
         
         work_dir = f"/tmp/{video_id}"

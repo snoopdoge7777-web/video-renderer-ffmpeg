@@ -17,7 +17,6 @@ def render_video():
         print("DATOS RECIBIDOS:", data)
         
         video_id = data.get('video_id', 'video_default')
-        # CORREGIDO: ahora lee 'srt_content' que es lo que manda n8n
         srt_content = data.get('srt_content', data.get('srt', ''))
         image_urls_raw = data.get('image_urls', [])
         
@@ -83,6 +82,12 @@ def render_video():
         
         return send_file(output_video, mimetype='video/mp4', as_attachment=True, download_name=f"{video_id}.mp4")
         
+    except subprocess.CalledProcessError as e:
+        print("FFMPEG ERROR:", e.stderr)
+        return jsonify({
+            "status": "error", 
+            "message": f"Error en FFmpeg: {e.stderr}"
+        }), 500
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
